@@ -61,6 +61,11 @@
 #include "msm_sdcc.h"
 #include "msm_sdcc_dml.h"
 
+#ifdef CONFIG_WIFI_BCM4329
+int sdcc_wifi_slot = -1;
+#define SDCC_WIFI_SLOT			(sdcc_wifi_slot)
+#endif
+
 #define DRIVER_NAME "msm-sdcc"
 
 #define DBG(host, fmt, args...)	\
@@ -4954,6 +4959,13 @@ store_polling(struct device *dev, struct device_attribute *attr,
 	spin_lock_irqsave(&host->lock, flags);
 	if (value) {
 		mmc->caps |= MMC_CAP_NEEDS_POLL;
+#ifdef CONFIG_WIFI_BCM4329
+		if (host->pdev_id == SDCC_WIFI_SLOT) {
+			printk("%s : no need to enable polling for slot %d (as host->pdev_id) \n", __FUNCTION__ , \
+				host->pdev_id );
+			mmc->caps &= ~MMC_CAP_NEEDS_POLL;
+		}
+#endif
 		mmc_detect_change(host->mmc, 0);
 	} else {
 		mmc->caps &= ~MMC_CAP_NEEDS_POLL;
@@ -6096,6 +6108,12 @@ msmsdcc_probe(struct platform_device *pdev)
 	setup_timer(&host->req_tout_timer, msmsdcc_req_tout_timer_hdlr,
 			(unsigned long)host);
 
+#ifdef CONFIG_WIFI_BCM4329
+	if (SDCC_WIFI_SLOT == host->pdev_id) {
+		mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY;
+	}
+#endif
+
 	mmc_add_host(mmc);
 
 	mmc->clk_scaling.up_threshold = 35;
@@ -6455,7 +6473,15 @@ msmsdcc_runtime_suspend(struct device *dev)
 
 	pr_debug("%s: %s: start\n", mmc_hostname(mmc), __func__);
 	if (mmc) {
+#ifdef CONFIG_WIFI_BCM4329
+		if (host->pdev_id == SDCC_WIFI_SLOT) {
+			host->sdcc_suspending = 0;
+		} else {
+			host->sdcc_suspending = 1;
+		}
+#else
 		host->sdcc_suspending = 1;
+#endif
 		mmc->suspend_task = current;
 
 		/*
@@ -6473,11 +6499,34 @@ msmsdcc_runtime_suspend(struct device *dev)
 		 * simple become pm usage counter increment operations.
 		 */
 		pm_runtime_get_noresume(dev);
+#ifdef CONFIG_WIFI_BCM4329
+		if (host->pdev_id == SDCC_WIFI_SLOT) {
+			/* If there is pending detect work abort runtime suspend */
+			if (unlikely(work_busy(&mmc->detect.work))) {
+				printk("sdcc debug :work_busy!!\n");
+				rc = -EAGAIN;
+			} else {
+				if (atomic_read(&host->clks_on)) {
+					printk("sdcc debug :WIFI slot clock off!!\n");
+					clk_disable(host->clk);
+					clk_disable(host->pclk);
+					atomic_set(&host->clks_on, 0);
+				}
+			}
+		} else {
+			/* If there is pending detect work abort runtime suspend */
+			if (unlikely(work_busy(&mmc->detect.work)))
+				rc = -EAGAIN;
+			else
+				rc = mmc_suspend_host(mmc);
+		}
+#else
 		/* If there is pending detect work abort runtime suspend */
 		if (unlikely(work_busy(&mmc->detect.work)))
 			rc = -EAGAIN;
 		else
 			rc = mmc_suspend_host(mmc);
+#endif
 		pm_runtime_put_noidle(dev);
 
 		if (!rc) {
@@ -6523,7 +6572,17 @@ msmsdcc_runtime_resume(struct device *dev)
 			msmsdcc_ungate_clock(host);
 		}
 
+#ifdef CONFIG_WIFI_BCM4329
+		if (host->pdev_id == SDCC_WIFI_SLOT) {
+			if(atomic_read(&host->clks_on)) {
+				printk("sdcc debug :WIFI slot clock on!!\n");
+			}
+		} else {
+			mmc_resume_host(mmc);
+		}
+#else
 		mmc_resume_host(mmc);
+#endif
 
 		/*
 		 * FIXME: Clearing of flags must be handled in clients
