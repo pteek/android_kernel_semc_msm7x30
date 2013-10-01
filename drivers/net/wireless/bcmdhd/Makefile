@@ -14,7 +14,7 @@ DHDCFLAGS = -Wall -Wstrict-prototypes -Dlinux -DBCMDRIVER                     \
 	-DCUSTOMER_HW2 -DOOB_INTR_ONLY -DHW_OOB                               \
 	-DMMC_SDIO_ABORT -DBCMSDIO -DBCMLXSDMMC -DBCMPLATFORM_BUS -DWLP2P     \
 	-DWIFI_ACT_FRAME -DARP_OFFLOAD_SUPPORT                                \
-	-DKEEP_ALIVE -DGET_CUSTOM_MAC_ENABLE -DPKT_FILTER_SUPPORT             \
+	-DKEEP_ALIVE -DPKT_FILTER_SUPPORT                                     \
 	-DEMBEDDED_PLATFORM -DENABLE_INSMOD_NO_FW_LOAD -DPNO_SUPPORT          \
 	-Idrivers/net/wireless/bcmdhd -Idrivers/net/wireless/bcmdhd/include
 
@@ -23,11 +23,22 @@ DHDOFILES = aiutils.o bcmsdh_sdmmc_linux.o dhd_linux.o siutils.o bcmutils.o   \
 	bcmsdh.o dhd_cdc.o bcmsdh_linux.o dhd_common.o linux_osl.o            \
 	bcmsdh_sdmmc.o dhd_custom_gpio.o sbutils.o wldev_common.o wl_android.o
 
+ifdef CONFIG_WIFI_BCM4329
+DHDCFLAGS += -DDHD_USE_STATIC_BUF
+DHDCFLAGS += -DCUSTOM_SDCC_WIFI_SLOT=3
+DHDCFLAGS += -DCUSTOM_OOB_GPIO_NUM=18
+DHDCFLAGS += -DCONFIG_WIFI_CONTROL_FUNC
+else
+DHDCFLAGS += -DGET_CUSTOM_MAC_ENABLE
+endif
+
 obj-$(CONFIG_BCMDHD) += bcmdhd.o
 bcmdhd-objs += $(DHDOFILES)
+ifndef CONFIG_WIFI_BCM4329
 ifneq ($(CONFIG_WIRELESS_EXT),)
 bcmdhd-objs += wl_iw.o
 DHDCFLAGS += -DSOFTAP -DUSE_IW
+endif
 endif
 ifneq ($(CONFIG_CFG80211),)
 bcmdhd-objs += wl_cfg80211.o wl_cfgp2p.o wl_linux_mon.o dhd_cfg80211.o

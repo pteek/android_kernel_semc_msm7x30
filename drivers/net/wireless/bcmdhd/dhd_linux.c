@@ -160,10 +160,10 @@ print_tainted()
 #endif	/* LINUX_VERSION_CODE == KERNEL_VERSION(2, 6, 15) */
 
 /* Linux wireless extension support */
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 #include <wl_iw.h>
 extern wl_iw_extra_params_t  g_wl_iw_params;
-#endif /* defined(CONFIG_WIRELESS_EXT) */
+#endif /* defined(WL_WIRELESS_EXT) */
 
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 #include <linux/earlysuspend.h>
@@ -224,9 +224,9 @@ static uint32 maxdelay = 0, tspktcnt = 0, maxdelaypktno = 0;
 
 /* Local private structure (extension of pub) */
 typedef struct dhd_info {
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 	wl_iw_t		iw;		/* wireless extensions state (must be first) */
-#endif /* defined(CONFIG_WIRELESS_EXT) */
+#endif /* defined(WL_WIRELESS_EXT) */
 
 	dhd_pub_t pub;
 
@@ -301,8 +301,13 @@ typedef struct dhd_info {
 /* Definitions to provide path to the firmware and nvram
  * example nvram_path[MOD_PARAM_PATHLEN]="/projects/wlan/nvram.txt"
  */
+#ifdef CONFIG_WIFI_BCM4329
+char firmware_path[MOD_PARAM_PATHLEN] = {0};
+char nvram_path[MOD_PARAM_PATHLEN] = {0};
+#else
 char firmware_path[MOD_PARAM_PATHLEN];
 char nvram_path[MOD_PARAM_PATHLEN];
+#endif
 
 int op_mode = 0;
 module_param(op_mode, int, 0644);
@@ -315,12 +320,18 @@ struct semaphore dhd_chipup_sem;
 #define DHD_REGISTRATION_TIMEOUT  12000  /* msec : allowed time to finished dhd registration */
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) */
 
+#ifdef CONFIG_WIFI_BCM4329
+char mac_param[MOD_PARAM_PATHLEN] = {0}; 
+module_param_string(mac_param, mac_param, MOD_PARAM_PATHLEN, 0644);
+#endif
 /* Spawn a thread for system ioctls (set mac, set mcast) */
 uint dhd_sysioc = TRUE;
 module_param(dhd_sysioc, uint, 0);
 
 /* Error bits */
+#ifndef CONFIG_WIFI_BCM4329
 module_param(dhd_msg_level, int, 0);
+#endif
 
 /* load firmware and/or nvram values from the filesystem */
 module_param_string(firmware_path, firmware_path, MOD_PARAM_PATHLEN, 0660);
@@ -473,9 +484,9 @@ int dhd_monitor_init(void *dhd_pub);
 int dhd_monitor_uninit(void);
 
 
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 struct iw_statistics *dhd_get_wireless_stats(struct net_device *dev);
-#endif /* defined(CONFIG_WIRELESS_EXT) */
+#endif /* defined(WL_WIRELESS_EXT) */
 
 static void dhd_dpc(ulong data);
 /* forward decl */
@@ -2101,7 +2112,7 @@ dhd_ioctl_entry(struct net_device *net, struct ifreq *ifr, int cmd)
 		return -1;
 	}
 
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 	/* linux wireless extensions */
 	if ((cmd >= SIOCIWFIRST) && (cmd <= SIOCIWLAST)) {
 		/* may recurse, do NOT lock */
@@ -2109,7 +2120,7 @@ dhd_ioctl_entry(struct net_device *net, struct ifreq *ifr, int cmd)
 		DHD_OS_WAKE_UNLOCK(&dhd->pub);
 		return ret;
 	}
-#endif /* defined(CONFIG_WIRELESS_EXT) */
+#endif /* defined(WL_WIRELESS_EXT) */
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 4, 2)
 	if (cmd == SIOCETHTOOL) {
@@ -2746,7 +2757,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	dhd_monitor_init(&dhd->pub);
 	dhd_state |= DHD_ATTACH_STATE_CFG80211;
 #endif
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 	/* Attach and link in the iw */
 	if (!(dhd_state &  DHD_ATTACH_STATE_CFG80211)) {
 		if (wl_iw_attach(net, (void *)&dhd->pub) != 0) {
@@ -2755,7 +2766,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	}
 	dhd_state |= DHD_ATTACH_STATE_WL_ATTACH;
 	}
-#endif /* defined(CONFIG_WIRELESS_EXT) */
+#endif /* defined(WL_WIRELESS_EXT) */
 
 
 	/* Set up the watchdog timer */
@@ -2841,6 +2852,91 @@ fail:
 
 	return NULL;
 }
+
+#ifdef CONFIG_WIFI_BCM4329
+static int
+wmic_ether_aton(const char *orig, unsigned char *eth)
+{
+	const char *bufp;
+	int i;
+
+	i = 0;
+	for(bufp = orig; *bufp != '\0'; ++bufp) {
+		unsigned int val;
+		unsigned char c;
+
+		c = *bufp++;
+
+		if (c >= '0' && c <= '9') val = c - '0';
+		else if (c >= 'a' && c <= 'f') val = c - 'a' + 10;
+		else if (c >= 'A' && c <= 'F') val = c - 'A' + 10;
+		else {
+			printk("%s: MAC value is invalid\n", __FUNCTION__);
+			break;
+		}
+
+		val <<= 4;
+		c = *bufp++;
+		if (c >= '0' && c <= '9') val |= c - '0';
+		else if (c >= 'a' && c <= 'f') val |= c - 'a' + 10;
+		else if (c >= 'A' && c <= 'F') val |= c - 'A' + 10;
+		else {
+			printk("%s: MAC value is invalid\n", __FUNCTION__);
+			break;
+		}
+
+		eth[i] = (unsigned char) (val & 0377);
+		if(++i == ETHER_ADDR_LEN) {
+			/* That's it.  Any trailing junk? */
+			c = *bufp;
+			if ((c != '\0') && (c != 0x20) && (c != 0x0a) && (c != 0x0d)) {
+				printk("wmic_ether_aton end char is not correct [%c:0x%x]\n", c, c);
+				return 0;
+			}
+			return 1;
+		}
+		c = *bufp;
+		if (c != ':') {
+			printk("wmic_ether_aton: c[%c:0x%x] is not :\n", c,c);
+			break;
+		}
+	}
+	return 0;
+}
+
+void dhd_write_mac_address( dhd_info_t * dhd) 
+{
+
+	unsigned char mac_p[ETHER_ADDR_LEN];
+	struct ether_addr *mac_addr = NULL;
+
+	mac_addr = (struct ether_addr *)mac_p;
+
+	if (strlen(mac_param))
+	{
+		/* Convert MAC Address */
+		DHD_TRACE(("%s: mac_param is %s\n", __FUNCTION__, mac_param));
+
+		if (!wmic_ether_aton(mac_param, (unsigned char *)mac_p)) {
+			DHD_ERROR(("%s: convert mac value fail\n", __FUNCTION__));
+			return ;
+		}
+
+		/* Final MAC Address */
+		DHD_TRACE(("%s: final mac value is %02x:%02x:%02x:%02x:%02x:%02x\n",
+			  __FUNCTION__,
+			  mac_p[0], mac_p[1], mac_p[2],
+			  mac_p[3], mac_p[4], mac_p[5] ));
+
+		/* Update MAC address into RAM */
+		memcpy(dhd->pub.mac.octet, mac_addr, ETHER_ADDR_LEN);
+	}
+	else 
+	{
+		DHD_TRACE(("Warning %s: mac_param is NULL \n", __FUNCTION__));
+	}
+}
+#endif
 
 int
 dhd_bus_start(dhd_pub_t *dhdp)
@@ -2942,6 +3038,10 @@ dhd_bus_start(dhd_pub_t *dhdp)
 	dhd_read_macaddr(dhd);
 #endif
 
+#ifdef CONFIG_WIFI_BCM4329
+	dhd_write_mac_address(dhd);
+#endif
+
 	/* Bus is ready, do any protocol initialization */
 	if ((ret = dhd_prot_init(&dhd->pub)) < 0)
 		return ret;
@@ -3030,6 +3130,45 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 
 	DHD_TRACE(("Enter %s\n", __FUNCTION__));
 	dhd->op_mode = 0;
+#ifdef CONFIG_WIFI_BCM4329
+	/* Get the device MAC address */	
+    memset(buf,0,sizeof(buf));
+    strcpy(buf, "cur_etheraddr");
+    if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, buf, sizeof(buf), FALSE, 0)) < 0) 
+    { 
+        DHD_ERROR(("%s: can't get MAC address , error=%d\n", __FUNCTION__, ret));   
+        return BCME_NOTUP;
+    }       
+    if ( dhd->mac.octet[0] || dhd->mac.octet[1] || dhd->mac.octet[2] ||      
+        dhd->mac.octet[3] || dhd->mac.octet[4] || dhd->mac.octet[5] ) 
+    {       
+        if (memcmp(dhd->mac.octet, buf, ETHER_ADDR_LEN) != 0) 
+        {        
+            /* Set the device MAC address */    
+            bcm_mkiovar("cur_etheraddr", (char *)dhd->mac.octet, ETHER_ADDR_LEN, buf, sizeof(buf));  
+            if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0)) < 0) 
+            {             
+                DHD_ERROR(("%s: can't set MAC address , error=%d\n", __FUNCTION__, ret)); 
+                return BCME_NOTUP;         
+            }        
+            DHD_ERROR(("%s: use MAC address in ram %02x:%02x:%02x:%02x:%02x:%02x\n",     
+                __FUNCTION__,         
+                dhd->mac.octet[0], dhd->mac.octet[1], dhd->mac.octet[2],      
+                dhd->mac.octet[3], dhd->mac.octet[4], dhd->mac.octet[5] )); 
+        } else {     
+            DHD_ERROR(("%s: same MAC address in ram and nvram %02x:%02x:%02x:%02x:%02x:%02x\n",      
+                __FUNCTION__,          
+                dhd->mac.octet[0], dhd->mac.octet[1], dhd->mac.octet[2],   
+                dhd->mac.octet[3], dhd->mac.octet[4], dhd->mac.octet[5] ));      
+        }  
+    } else {       
+        memcpy(dhd->mac.octet, buf, ETHER_ADDR_LEN); 
+        DHD_ERROR(("%s: use MAC address in nvram %02x:%02x:%02x:%02x:%02x:%02x\n",      
+            __FUNCTION__,    
+            dhd->mac.octet[0], dhd->mac.octet[1], dhd->mac.octet[2], 
+            dhd->mac.octet[3], dhd->mac.octet[4], dhd->mac.octet[5] )); 
+    }
+#else
 #ifdef GET_CUSTOM_MAC_ENABLE
 	ret = dhd_custom_get_mac_address(ea_addr.octet);
 	if (!ret) {
@@ -3056,6 +3195,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef GET_CUSTOM_MAC_ENABLE
 	}
 #endif /* GET_CUSTOM_MAC_ENABLE */
+#endif
 
 #ifdef SET_RANDOM_MAC_SOFTAP
 	if ((!op_mode && strstr(fw_path, "_apsta") != NULL) || (op_mode == 0x02)) {
@@ -3548,14 +3688,14 @@ dhd_net_attach(dhd_pub_t *dhdp, int ifidx)
 	net->ethtool_ops = &dhd_ethtool_ops;
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24) */
 
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 #if WIRELESS_EXT < 19
 	net->get_wireless_stats = dhd_get_wireless_stats;
 #endif /* WIRELESS_EXT < 19 */
 #if WIRELESS_EXT > 12
 	net->wireless_handlers = (struct iw_handler_def *)&wl_iw_handler_def;
 #endif /* WIRELESS_EXT > 12 */
-#endif /* defined(CONFIG_WIRELESS_EXT) */
+#endif /* defined(WL_WIRELESS_EXT) */
 
 	dhd->pub.rxsz = DBUS_RX_BUFFER_SIZE_DHD(net);
 
@@ -3571,7 +3711,7 @@ dhd_net_attach(dhd_pub_t *dhdp, int ifidx)
 		net->dev_addr[0], net->dev_addr[1], net->dev_addr[2],
 		net->dev_addr[3], net->dev_addr[4], net->dev_addr[5]);
 
-#if defined(SOFTAP) && defined(CONFIG_WIRELESS_EXT) && !defined(WL_CFG80211)
+#if defined(SOFTAP) && defined(WL_WIRELESS_EXT) && !defined(WL_CFG80211)
 		wl_iw_iscan_set_scan_broadcast_prep(net, 1);
 #endif
 
@@ -3656,12 +3796,12 @@ void dhd_detach(dhd_pub_t *dhdp)
 #endif /* defined(CONFIG_HAS_EARLYSUSPEND) */
 
 
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 	if (dhd->dhd_state & DHD_ATTACH_STATE_WL_ATTACH) {
 		/* Detatch and unlink in the iw */
 		wl_iw_detach();
 	}
-#endif /* defined(CONFIG_WIRELESS_EXT) */
+#endif /* defined(WL_WIRELESS_EXT) */
 
 	if (&dhd->thr_sysioc_ctl.thr_pid >= 0) {
 		PROC_STOP(&dhd->thr_sysioc_ctl);
@@ -3783,7 +3923,11 @@ dhd_free(dhd_pub_t *dhdp)
 static void __exit
 dhd_module_cleanup(void)
 {
+#ifdef CONFIG_WIFI_BCM4329
+	DHD_ERROR(("%s: Enter\n", __FUNCTION__));
+#else
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
+#endif
 
 	dhd_bus_unregister();
 
@@ -3794,6 +3938,9 @@ dhd_module_cleanup(void)
 
 	/* Call customer gpio to turn off power with WL_REG_ON signal */
 	dhd_customer_gpio_wlan_ctrl(WLAN_POWER_OFF);
+#ifdef CONFIG_WIFI_BCM4329
+	DHD_ERROR(("%s: Enter\n", __FUNCTION__));
+#endif
 }
 
 
@@ -3807,7 +3954,11 @@ dhd_module_init(void)
 	int chip_up = 0;
 #endif 
 
+#ifdef CONFIG_WIFI_BCM4329
+	DHD_ERROR(("%s: Enter\n", __FUNCTION__));
+#else
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
+#endif
 
 	wl_android_init();
 
@@ -4172,7 +4323,7 @@ void dhd_os_prefree(void *osh, void *addr, uint size)
 }
 #endif /* defined(CONFIG_WIFI_CONTROL_FUNC) */
 
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 struct iw_statistics *
 dhd_get_wireless_stats(struct net_device *dev)
 {
@@ -4190,7 +4341,7 @@ dhd_get_wireless_stats(struct net_device *dev)
 	else
 		return NULL;
 }
-#endif /* defined(CONFIG_WIRELESS_EXT) */
+#endif /* defined(WL_WIRELESS_EXT) */
 
 static int
 dhd_wl_host_event(dhd_info_t *dhd, int *ifidx, void *pktdata,
@@ -4203,7 +4354,7 @@ dhd_wl_host_event(dhd_info_t *dhd, int *ifidx, void *pktdata,
 	if (bcmerror != BCME_OK)
 		return (bcmerror);
 
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 	if (event->bsscfgidx == 0) {
 		/*
 		 * Wireless ext is on primary interface only
@@ -4216,7 +4367,7 @@ dhd_wl_host_event(dhd_info_t *dhd, int *ifidx, void *pktdata,
 		wl_iw_event(dhd->iflist[*ifidx]->net, event, *data);
 		}
 	}
-#endif /* defined(CONFIG_WIRELESS_EXT)  */
+#endif /* defined(WL_WIRELESS_EXT)  */
 
 #ifdef WL_CFG80211
 	if ((ntoh32(event->event_type) == WLC_E_IF) &&
@@ -4531,7 +4682,7 @@ int net_os_send_hang_message(struct net_device *dev)
 	if (dhd) {
 		if (!dhd->pub.hang_was_sent) {
 			dhd->pub.hang_was_sent = 1;
-#if defined(CONFIG_WIRELESS_EXT)
+#if defined(WL_WIRELESS_EXT)
 			ret = wl_iw_send_priv_event(dev, "HANG");
 #endif
 #if defined(WL_CFG80211)

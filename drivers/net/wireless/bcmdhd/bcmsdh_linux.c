@@ -78,6 +78,12 @@ static bcmsdh_hc_t *sdhcinfo = NULL;
 /* driver info, initialized when bcmsdh_register is called */
 static bcmsdh_driver_t drvinfo = {NULL, NULL};
 
+#ifdef CONFIG_MACH_HUAWEI_U8800_51
+#define CUSTOM_OOB_GPIO_NUM_EXTRA 128
+int oob_irq_extra;
+extern int dhd_oob_gpio_num;
+#endif
+
 /* debugging macros */
 #define SDLX_MSG(x)
 
@@ -181,6 +187,11 @@ int bcmsdh_probe(struct device *dev)
 
 	/* Get customer specific OOB IRQ parametres: IRQ number as IRQ type */
 	irq = dhd_customer_oob_irq_map(&irq_flags);
+#ifdef CONFIG_MACH_HUAWEI_U8800_51
+
+		oob_irq_extra = MSM_GPIO_TO_INT(CUSTOM_OOB_GPIO_NUM_EXTRA);
+#endif
+
 	if  (irq < 0) {
 		SDLX_MSG(("%s: Host irq is not defined\n", __FUNCTION__));
 		return 1;
@@ -585,6 +596,12 @@ void bcmsdh_oob_intr_set(bool enable)
 			enable_irq(sdhcinfo->oob_irq);
 		else
 			disable_irq_nosync(sdhcinfo->oob_irq);
+#ifdef CONFIG_MACH_HUAWEI_U8800_51
+			if (enable)
+				enable_irq(oob_irq_extra);
+			else
+				disable_irq_nosync(oob_irq_extra);
+#endif
 		curstate = enable;
 	}
 	spin_unlock_irqrestore(&sdhcinfo->irq_lock, flags);
@@ -628,6 +645,16 @@ int bcmsdh_register_oob_intr(void * dhdp)
 			return -ENODEV;
 
 		enable_irq_wake(sdhcinfo->oob_irq);
+
+#ifdef CONFIG_MACH_HUAWEI_U8800_51	
+		error = request_irq(oob_irq_extra, wlan_oob_irq, sdhcinfo->oob_flags,
+			"bcmsdh_sdmmc_extra", NULL);
+		if (error)
+			return -ENODEV;
+
+		enable_irq_wake(oob_irq_extra);
+#endif
+
 		sdhcinfo->oob_irq_registered = TRUE;
 		sdhcinfo->oob_irq_enable_flag = TRUE;
 	}
@@ -657,6 +684,13 @@ void bcmsdh_unregister_oob_intr(void)
 	if (sdhcinfo->oob_irq_registered == TRUE) {
 		bcmsdh_set_irq(FALSE);
 		free_irq(sdhcinfo->oob_irq, NULL);
+
+#ifdef CONFIG_MACH_HUAWEI_U8800_51
+		disable_irq_wake(oob_irq_extra);
+		disable_irq(oob_irq_extra);	/* just in case.. */
+		free_irq(oob_irq_extra, NULL);
+#endif
+
 		sdhcinfo->oob_irq_registered = FALSE;
 	}
 }
