@@ -62,6 +62,11 @@ static void uart_wait_until_sent(struct tty_struct *tty, int timeout);
 static void uart_change_pm(struct uart_state *state, int pm_state);
 
 static void uart_port_shutdown(struct tty_port *port);
+#ifdef CONFIG_BLUETOOTH_BCM4329
+extern void bluesleep_outgoing_data(void);
+extern void bluesleep_uart_open(struct uart_port * uport);
+extern void bluesleep_uart_close(struct uart_port* uport);
+#endif
 
 /*
  * This routine is used by the interrupt handler to schedule processing in
@@ -518,6 +523,13 @@ static int uart_write(struct tty_struct *tty,
 
 	if (!circ->buf)
 		return 0;
+
+#ifdef CONFIG_BLUETOOTH_BCM4329
+        if (tty->name && !strcmp(tty->name, "ttyHS0"))
+        {
+                bluesleep_outgoing_data();
+        }
+#endif
 
 	spin_lock_irqsave(&port->lock, flags);
 	while (1) {
@@ -1269,6 +1281,12 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 
 	if (tty_port_close_start(port, tty, filp) == 0)
 		return;
+#ifdef CONFIG_BLUETOOTH_BCM4329
+        if (tty->name && !strcmp(tty->name, "ttyHS0"))
+        {
+                bluesleep_uart_close(uport);
+        }
+#endif
 
 	/*
 	 * At this point, we stop accepting input.  To do this, we
@@ -1533,6 +1551,12 @@ static int uart_open(struct tty_struct *tty, struct file *filp)
 	if (retval == 0)
 		retval = tty_port_block_til_ready(port, tty, filp);
 
+#ifdef CONFIG_BLUETOOTH_BCM4329
+        if (tty->name && !strcmp(tty->name, "ttyHS0"))
+        {
+                bluesleep_uart_open(state->uart_port);
+        }
+#endif
 end:
 	return retval;
 err_dec_count:

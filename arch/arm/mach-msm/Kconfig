@@ -2785,6 +2785,12 @@ config SEMC_CAMERA_8MP
 	help
 	  Increased PMEP_ADSP for phones with 8MP sensors.
 
+config BLUETOOTH_BCM4329
+	bool "Bluetooth for devices with a BCM4329 chip"
+	default n
+	help
+	  Select Y to use Broadcom's BTLA stack. Used by BCM4329.
+
 config WIFI_BCM4329
 	bool "Wifi for devices with a BCM4329 chip"
 	default n

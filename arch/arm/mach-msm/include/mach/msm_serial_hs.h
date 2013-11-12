@@ -39,6 +39,9 @@ struct msm_serial_hs_platform_data {
 	/* bool: inject char into rx tty on wakeup */
 	unsigned char inject_rx_on_wakeup;
 	char rx_to_inject;
+#ifdef CONFIG_BLUETOOTH_BCM4329
+	int (*gpio_config)(int);
+#else
 	unsigned config_gpio;
 	int uart_tx_gpio;
 	int uart_rx_gpio;
@@ -46,6 +49,7 @@ struct msm_serial_hs_platform_data {
 	int uart_rfr_gpio;
 	int userid;
 	int uartdm_rx_buf_size;
+#endif
 };
 
 unsigned int msm_hs_tx_empty(struct uart_port *uport);

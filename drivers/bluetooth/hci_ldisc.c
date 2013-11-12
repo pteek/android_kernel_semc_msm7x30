@@ -589,14 +589,18 @@ static int __init hci_uart_init(void)
 #ifdef CONFIG_BT_HCIUART_BCSP
 	bcsp_init();
 #endif
-#ifdef CONFIG_BT_HCIUART_LL
+#if defined(CONFIG_BT_HCIUART_LL) && defined(CONFIG_BLUETOOTH_BCM4329)
 	ll_init();
+#endif
+
+#ifdef CONFIG_BT_HCIUART_LL
+    ll_init();
 #endif
 #ifdef CONFIG_BT_HCIUART_ATH3K
 	ath_init();
 #endif
 #ifdef CONFIG_BT_HCIUART_IBS
-	ibs_init();
+    ibs_init();
 #endif
 
 	return 0;
@@ -612,6 +616,10 @@ static void __exit hci_uart_exit(void)
 #ifdef CONFIG_BT_HCIUART_BCSP
 	bcsp_deinit();
 #endif
+#if defined(CONFIG_BT_HCIUART_LL) && defined(CONFIG_BLUETOOTH_BCM4329)
+        ll_deinit();
+#endif
+
 #ifdef CONFIG_BT_HCIUART_LL
 	ll_deinit();
 #endif
