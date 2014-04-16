@@ -166,6 +166,42 @@
 #define SYNAPTICS_TOUCHPAD_GPIO		33
 #endif
 
+#ifdef CONFIG_BLUETOOTH_BCM4329
+/* Set power delay */
+#define BCM4329_POWER_DELAY 150
+
+/* GPIOs config */
+#define GPIO_BT_UART_RTS   134
+#define GPIO_BT_UART_CTS   135
+#define GPIO_BT_RX         136
+#define GPIO_BT_TX         137
+
+/* PCM signals */
+#define GPIO_BT_PCM_DOUT   138
+#define GPIO_BT_PCM_DIN    139
+#define GPIO_BT_PCM_SYNC   140
+#define GPIO_BT_PCM_CLK    141
+
+/* Wake signals */
+#define GPIO_BT_WAKE_MSM   142
+#define GPIO_BT_WAKE_BT    143
+
+/* Control signals */
+#define GPIO_BT_SHUTDOWN_N 161
+#define GPIO_BT_RESET_N    163
+
+/* GPIOs function */
+#define GPIO_BT_FUN_0      0
+#define GPIO_BT_FUN_1      1
+#define GPIO_BT_ON         1
+#define GPIO_BT_OFF        0
+
+/* I2C power configs */
+#define VREG_GP13_NAME	"gp13"
+#define VREG_GP13_VOLTAGE_VALUE	1800000
+#define VREG_S3_VOLTAGE_VALUE	1800000
+#endif
+
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MSM_FB_PRIM_BUF_SIZE   (864 * 480 * 4 * 3) /* 4bpp * 3 Pages */
 #else
@@ -2374,12 +2410,6 @@ static int msm_hsusb_pmic_notif_init(void (*callback)(int online), int init)
 }
 #endif
 
-static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
-       .inject_rx_on_wakeup = 1,
-       .rx_to_inject = 0xFD,
-       .uartdm_rx_buf_size = 1024,
-};
-
 static struct resource msm_fb_resources[] = {
 	{
 		.flags  = IORESOURCE_DMA,
@@ -2718,6 +2748,277 @@ static void __init msm_fb_add_devices(void)
 	msm_fb_register_device("pmdh", &mddi_pdata);
 }
 
+#ifdef CONFIG_BLUETOOTH_BCM4329
+static struct platform_device msm_bt_power_device = {
+    .name = "bt_power",
+    .id     = -1
+};
+
+enum {
+    BT_WAKE,
+    BT_RFR,
+    BT_CTS,
+    BT_RX,
+    BT_TX,
+    BT_PCM_DOUT,
+    BT_PCM_DIN,
+    BT_PCM_SYNC,
+    BT_PCM_CLK,
+    BT_HOST_WAKE,
+};
+
+static struct msm_gpio bt_config_bcm4329_power_on[] = {
+    { GPIO_CFG(GPIO_BT_UART_RTS, GPIO_BT_FUN_1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "UART1DM_RFR" },
+    { GPIO_CFG(GPIO_BT_UART_CTS, GPIO_BT_FUN_1, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "UART1DM_CTS" },
+    { GPIO_CFG(GPIO_BT_RX, GPIO_BT_FUN_1, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "UART1DM_Rx" },
+    { GPIO_CFG(GPIO_BT_TX, GPIO_BT_FUN_1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "UART1DM_Tx" },
+    { GPIO_CFG(GPIO_BT_WAKE_BT, GPIO_BT_FUN_0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "MSM_WAKE_BT" },
+    { GPIO_CFG(GPIO_BT_WAKE_MSM, GPIO_BT_FUN_0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "BT_WAKE_MSM" },
+    { GPIO_CFG(GPIO_BT_PCM_DOUT, GPIO_BT_FUN_1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "PCM_DOUT" },
+    { GPIO_CFG(GPIO_BT_PCM_DIN, GPIO_BT_FUN_1, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "PCM_DIN" },
+    { GPIO_CFG(GPIO_BT_PCM_SYNC, GPIO_BT_FUN_1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "PCM_SYNC" },
+    { GPIO_CFG(GPIO_BT_PCM_CLK, GPIO_BT_FUN_1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "PCM_CLK " }
+};
+
+static struct msm_gpio bt_config_power_control[] = {
+    { GPIO_CFG(GPIO_BT_SHUTDOWN_N, GPIO_BT_FUN_0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "BT_REG_ON" },
+    { GPIO_CFG(GPIO_BT_RESET_N, GPIO_BT_FUN_0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "BT_PWR_ON" }
+};
+
+static struct msm_gpio bt_config_bcm4329_power_off[] = {
+    { GPIO_CFG(GPIO_BT_UART_RTS, GPIO_BT_FUN_0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+        "UART1DM_RFR" },
+    { GPIO_CFG(GPIO_BT_UART_CTS, GPIO_BT_FUN_0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+        "UART1DM_CTS" },
+    { GPIO_CFG(GPIO_BT_RX, GPIO_BT_FUN_0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+        "UART1DM_Rx" },
+    { GPIO_CFG(GPIO_BT_TX, GPIO_BT_FUN_0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+        "UART1DM_Tx" },
+    { GPIO_CFG(GPIO_BT_WAKE_BT, GPIO_BT_FUN_0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+        "MSM_WAKE_BT" },
+    { GPIO_CFG(GPIO_BT_WAKE_MSM, GPIO_BT_FUN_0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+        "BT_WAKE_MSM" },
+    { GPIO_CFG(GPIO_BT_PCM_DOUT, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+        "PCM_DOUT" },
+    { GPIO_CFG(GPIO_BT_PCM_DIN, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+        "PCM_DIN" },
+    { GPIO_CFG(GPIO_BT_PCM_SYNC, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+        "PCM_SYNC" },
+    { GPIO_CFG(GPIO_BT_PCM_CLK, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+     	"PCM_CLK" }
+};
+
+static const char *vregs_bt_bcm4329_name[] = {
+    "s3"
+};
+
+static struct regulator *vregs_bt_bcm4329[ARRAY_SIZE(vregs_bt_bcm4329_name)];
+
+static int bluetooth_bcm4329_power_regulators(int on)
+{
+    int i = 0;
+    int rc = 0;
+
+    for (i = 0; i < ARRAY_SIZE(vregs_bt_bcm4329_name); i++) {
+        rc = on ? regulator_enable(vregs_bt_bcm4329[i]) :
+            regulator_disable(vregs_bt_bcm4329[i]);
+        if (rc < 0) {
+        printk(KERN_ERR "%s: vreg %s %s failed (%d)\n",
+            __func__, vregs_bt_bcm4329_name[i],
+    			       on ? "enable" : "disable", rc);
+        return -EIO;
+        }
+    }
+
+    if(on)
+    {
+        rc = gpio_direction_output(GPIO_BT_SHUTDOWN_N, GPIO_BT_ON);  /* bt_reg_on off on: 161 --> 1 */
+        if (rc)
+        {
+            printk(KERN_ERR "%s:  bluetooth power1 on fail (%d)\n",
+                   __func__, rc);
+            return -EIO;
+        }
+
+        mdelay(1);
+        rc = gpio_direction_output(GPIO_BT_RESET_N, GPIO_BT_ON);  /* bt_pwr_on  on: 163 --> 1 */
+        if (rc)
+        {
+            printk(KERN_ERR "%s:  bluetooth power2 off fail (%d)\n",
+                   __func__, rc);
+            return -EIO;
+        }
+    }
+    else
+    {
+        rc = gpio_direction_output(GPIO_BT_RESET_N, GPIO_BT_OFF);  /* bt_pwr_on off: 163 --> 0 */
+        if (rc)
+        {
+            printk(KERN_ERR "%s:  bluetooth power2 off fail (%d)\n",
+                   __func__, rc);
+            return -EIO;
+        }
+        mdelay(1);
+
+        rc = gpio_direction_output(GPIO_BT_SHUTDOWN_N, GPIO_BT_OFF);  /* bt_reg_on: 161 --> 0 */
+        if (rc)
+        {
+            printk(KERN_ERR "%s:  bluetooth power1 off fail (%d)\n",
+                   __func__, rc);
+            return -EIO;
+        }
+        mdelay(1);
+   }
+    mdelay(BCM4329_POWER_DELAY);
+    return 0;
+}
+
+static int bluetooth_bcm4329_power(int on)
+{
+    int rc = 0;
+
+    if (on)
+    {
+        rc = msm_gpios_enable(bt_config_bcm4329_power_on,
+            ARRAY_SIZE(bt_config_bcm4329_power_on));
+        if (rc < 0)
+        {
+            printk(KERN_ERR "%s: bluetooth config gpio on failed (%d)\n",
+                __func__, rc);
+            return rc;
+        }
+
+        rc = bluetooth_bcm4329_power_regulators(on);
+        if (rc < 0)
+        {
+            printk(KERN_ERR "%s: bluetooth power regulators on failed (%d)\n",
+                __func__, rc);
+            return rc;
+        }
+    }
+    else
+    {
+        rc = msm_gpios_enable(bt_config_bcm4329_power_off,
+            ARRAY_SIZE(bt_config_bcm4329_power_off));
+        if (rc < 0)
+        {
+            printk(KERN_ERR "%s: bluetooth config gpio on failed (%d)\n",
+                __func__, rc);
+            return rc;
+        }
+
+        if (platform_get_drvdata(&msm_bt_power_device) == NULL)
+        {
+            printk(KERN_DEBUG "bluetooth rfkill block error : \n");
+            goto out;
+        }
+
+        rc = bluetooth_bcm4329_power_regulators(on);
+        if (rc < 0)
+        {
+            printk(KERN_ERR "%s: bluetooth power regulators off failed (%d)\n",
+                __func__, rc);
+            return rc;
+        }
+    }
+out:
+        printk(KERN_DEBUG "bluetooth power: %d\n", on);
+
+        return 0;
+}
+
+static void __init bt_bcm4329_power_init(void)
+{
+    int i = 0;
+    int rc = -1;
+    for (i = 0; i < ARRAY_SIZE(vregs_bt_bcm4329_name); i++)
+    {
+        vregs_bt_bcm4329[i] = regulator_get(NULL, vregs_bt_bcm4329_name[i]);
+        if (IS_ERR(vregs_bt_bcm4329[i]))
+        {
+            printk(KERN_ERR "%s: vreg get %s failed (%ld)\n",
+                __func__, vregs_bt_bcm4329_name[i],
+                PTR_ERR(vregs_bt_bcm4329[i]));
+        return;
+        }
+
+        rc = regulator_set_voltage(vregs_bt_bcm4329[i], VREG_S3_VOLTAGE_VALUE, VREG_S3_VOLTAGE_VALUE);
+		if (rc) {
+		    printk("%s: regulator_s3  regulator_set_voltage failed\n", __func__);
+            return;
+	    }
+    }
+
+    rc = msm_gpios_request_enable(bt_config_power_control,
+                            ARRAY_SIZE(bt_config_power_control));
+    if (rc < 0) {
+            printk(KERN_ERR
+                    "%s: bluetooth power control request_enable failed (%d)\n",
+                            __func__, rc);
+            return;
+    }
+
+    rc = gpio_direction_output(GPIO_BT_RESET_N, GPIO_BT_OFF);  /* bt_pwr_on off: 163 --> 0 */
+    if (rc)
+    {
+        printk(KERN_ERR "%s:  bluetooth power2 off fail (%d)\n",
+               __func__, rc);
+        return ;
+    }
+    mdelay(1);
+
+    rc = gpio_direction_output(GPIO_BT_SHUTDOWN_N, GPIO_BT_OFF);  /* bt_reg_on: 161 --> 0 */
+    if (rc)
+    {
+        printk(KERN_ERR "%s:  bluetooth power1 off fail (%d)\n",
+               __func__, rc);
+        return ;
+    }
+    mdelay(1);
+
+    msm_bt_power_device.dev.platform_data = &bluetooth_bcm4329_power;
+}
+static struct resource bluesleep_resources[] = {
+    {
+    .name	= "gpio_host_wake",
+    .start	= GPIO_BT_WAKE_MSM,
+    .end	= GPIO_BT_WAKE_MSM,
+    .flags	= IORESOURCE_IO,
+    },
+    {
+    .name	= "gpio_ext_wake",
+    .start	= GPIO_BT_WAKE_BT,
+    .end	= GPIO_BT_WAKE_BT,
+    .flags	= IORESOURCE_IO,
+    },
+    {
+    .name	= "host_wake",
+    .start	= MSM_GPIO_TO_INT(GPIO_BT_WAKE_MSM),
+    .end	= MSM_GPIO_TO_INT(GPIO_BT_WAKE_MSM),
+    .flags	= IORESOURCE_IRQ,
+    },
+};
+
+static struct platform_device msm_bluesleep_device = {
+    .name = "bluesleep",
+    .id		= -1,
+    .num_resources	= ARRAY_SIZE(bluesleep_resources),
+    .resource	= bluesleep_resources,
+};
+#endif
+
 static char *msm_adc_device_names[] = {
 	"XO_ADC",
 };
@@ -2794,6 +3095,10 @@ static struct platform_device *devices[] __initdata = {
 #endif
 	&msm_device_adspdec,
 	&qup_device_i2c,
+#ifdef CONFIG_BLUETOOTH_BCM4329
+	&msm_bt_power_device,
+	&msm_bluesleep_device,
+#endif
 	&msm_kgsl_3d0,
 	&msm_kgsl_2d0,
 #ifdef CONFIG_SEIX006
@@ -3631,8 +3936,6 @@ static void __init msm7x30_init(void)
 	msm_device_gadget_peripheral.dev.platform_data = &msm_gadget_pdata;
 #endif
 #endif
-	msm_uart_dm1_pdata.wakeup_irq = gpio_to_irq(136);
-	msm_device_uart_dm1.dev.platform_data = &msm_uart_dm1_pdata;
 #if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
 	msm_device_tsif.dev.platform_data = &tsif_platform_data;
 #endif
@@ -3692,6 +3995,9 @@ static void __init msm7x30_init(void)
 	spi_register_board_info(msm_spi_board_info,
 				ARRAY_SIZE(msm_spi_board_info));
 
+#ifdef CONFIG_BLUETOOTH_BCM4329
+	bt_bcm4329_power_init();
+#endif
 #ifdef CONFIG_I2C_SSBI
 	msm_device_ssbi7.dev.platform_data = &msm_i2c_ssbi7_pdata;
 #endif
