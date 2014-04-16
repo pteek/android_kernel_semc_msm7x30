@@ -1256,7 +1256,6 @@ static int wifi_set_carddetect(int on)
 	}
 	return 0;
 }
-#endif
 
 static struct resource *get_wifi_irqres_from_of(struct platform_device *pdev)
 {
@@ -1277,6 +1276,7 @@ static struct resource *get_wifi_irqres_from_of(struct platform_device *pdev)
 
 	return &gpio_wifi_irqres;
 }
+#endif
 
 static int wifi_probe(struct platform_device *pdev)
 {
@@ -1335,7 +1335,9 @@ static int wifi_remove(struct platform_device *pdev)
 {
 	struct wifi_platform_data *wifi_ctrl =
 		(struct wifi_platform_data *)(pdev->dev.platform_data);
+#ifndef CONFIG_WIFI_BCM4329
 	struct io_cfg *cur, *q;
+#endif
 
 	DHD_ERROR(("## %s\n", __FUNCTION__));
 	wifi_control_data = wifi_ctrl;
