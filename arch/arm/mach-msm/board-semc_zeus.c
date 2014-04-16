@@ -138,6 +138,11 @@
 #include <linux/i2c/synaptics_touchpad.h>
 #endif
 
+#ifdef CONFIG_WIFI_BCM4329
+#include <linux/wifi_tiwlan.h>
+#include <linux/skbuff.h>
+#endif
+
 #ifdef CONFIG_SENSORS_AKM8975
 #define AKM8975_GPIO			92
 #endif
@@ -3160,16 +3165,21 @@ static unsigned int msm7x30_sdcc_slot_status(struct device *dev)
 }
 #endif
 
+extern int wlan_register_status_notify(void (*callback)(int, void *), void *dev_id);
+extern unsigned int wlan_status(struct device *dev);
+
 #ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
 static struct mmc_platform_data msm7x30_sdc3_data = {
-	.ocr_mask	= MMC_VDD_27_28 | MMC_VDD_28_29,
+	.ocr_mask	= MMC_VDD_165_195, /* 1.8v */
 	.translate_vdd	= msm_sdcc_setup_power,
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
+	.status	        = wlan_status,
+	.register_status_notify = wlan_register_status_notify,
 	.sdiowakeup_irq = MSM_GPIO_TO_INT(118),
 	.msmsdcc_fmin	= 144000,
 	.msmsdcc_fmid	= 24576000,
 	.msmsdcc_fmax	= 49152000,
-	.nonremovable	= 0,
+	.nonremovable	= 1,
 };
 #endif
 
@@ -3185,6 +3195,227 @@ static struct mmc_platform_data msm7x30_sdc4_data = {
 	.msmsdcc_fmid	= 24576000,
 	.msmsdcc_fmax	= 49152000,
 	.nonremovable	= 0,
+};
+#endif
+
+#ifdef CONFIG_WIFI_BCM4329
+
+#define PREALLOC_WLAN_NUMBER_OF_SECTIONS        4
+#define PREALLOC_WLAN_NUMBER_OF_BUFFERS         160
+#define PREALLOC_WLAN_SECTION_HEADER            24
+
+#define WLAN_SECTION_SIZE_0     (PREALLOC_WLAN_NUMBER_OF_BUFFERS * 128)
+#define WLAN_SECTION_SIZE_1     (PREALLOC_WLAN_NUMBER_OF_BUFFERS * 128)
+#define WLAN_SECTION_SIZE_2     (PREALLOC_WLAN_NUMBER_OF_BUFFERS * 512)
+#define WLAN_SECTION_SIZE_3     (PREALLOC_WLAN_NUMBER_OF_BUFFERS * 1024)
+
+#define WLAN_SKB_BUF_NUM        16
+#define WLAN_SLEEP_WAKE         40
+#define WLAN_SLEEP_WAKE_18      18
+
+#define WLAN_GPIO_FUNC_0         0
+#define WLAN_GPIO_FUNC_1         1
+#define WLAN_STAT_ON             1
+#define WLAN_STAT_OFF            0
+
+static struct msm_gpio wlan_wakes_msm[] = {
+    { GPIO_CFG(WLAN_SLEEP_WAKE, WLAN_GPIO_FUNC_0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),"WLAN_WAKES_MSM"
+    }
+};
+static struct msm_gpio wlan_wakes_msm_18[] = {
+    { GPIO_CFG(WLAN_SLEEP_WAKE_18, WLAN_GPIO_FUNC_0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),"WLAN_WAKES_MSM_18"
+    }
+};
+
+#define WLAN_REG 162
+#define WLAN_PWR 164
+extern int sdcc_wifi_slot;
+
+static struct msm_gpio wifi_config_init[] = {
+    { GPIO_CFG(WLAN_REG, WLAN_GPIO_FUNC_0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "WL_REG_ON" },
+    { GPIO_CFG(WLAN_PWR, WLAN_GPIO_FUNC_0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+        "WL_PWR_ON" }
+};
+static struct sk_buff *wlan_static_skb[WLAN_SKB_BUF_NUM];
+
+typedef struct wifi_mem_prealloc_struct {
+	void *mem_ptr;
+	unsigned long size;
+} wifi_mem_prealloc_t;
+
+static wifi_mem_prealloc_t wifi_mem_array[PREALLOC_WLAN_NUMBER_OF_SECTIONS] = {
+	{ NULL, (WLAN_SECTION_SIZE_0 + PREALLOC_WLAN_SECTION_HEADER) },
+	{ NULL, (WLAN_SECTION_SIZE_1 + PREALLOC_WLAN_SECTION_HEADER) },
+	{ NULL, (WLAN_SECTION_SIZE_2 + PREALLOC_WLAN_SECTION_HEADER) },
+	{ NULL, (WLAN_SECTION_SIZE_3 + PREALLOC_WLAN_SECTION_HEADER) }
+};
+
+static void *bcm_wifi_mem_prealloc(int section, unsigned long size)
+{
+	if (section == PREALLOC_WLAN_NUMBER_OF_SECTIONS)
+		return wlan_static_skb;
+	if ((section < 0) || (section > PREALLOC_WLAN_NUMBER_OF_SECTIONS))
+		return NULL;
+	if (wifi_mem_array[section].size < size)
+		return NULL;
+	return wifi_mem_array[section].mem_ptr;
+}
+
+static int wlan_wifi_cd = 0;
+static void (*wlan_status_notify_cb)(int card_present, void *dev_id);
+static void *wlan_status_notify_cb_devid;
+int wlan_register_status_notify(void (*callback)(int, void *),
+	void *dev_id)
+{
+	wlan_status_notify_cb = callback;
+	wlan_status_notify_cb_devid = dev_id;
+	return 0;
+}
+
+unsigned int wlan_status(struct device *dev)
+{
+	printk("wlan_status called....\n");
+	return wlan_wifi_cd;
+}
+
+static int bcm_wifi_set_power(int enable)
+{
+	int ret = 0;
+
+   	if (enable)
+	{
+            ret = gpio_direction_output(WLAN_REG, WLAN_STAT_ON);
+            if (ret < 0) {
+                    printk(KERN_ERR
+                            "%s: turn on wlan_reg failed (%d)\n",
+                                    __func__, ret);
+                    return -EIO;
+            }
+            mdelay(1);
+
+            ret = gpio_direction_output(WLAN_PWR, WLAN_STAT_ON);
+            if (ret < 0) {
+                    printk(KERN_ERR
+                            "%s: enable wlan_reset failed (%d)\n",
+                                    __func__, ret);
+                    return -EIO;
+            }
+            mdelay(150);
+            printk(KERN_ERR "%s: wifi power successed to pull up\n",__func__);
+
+	}
+        else
+        {
+
+            ret = gpio_direction_output(WLAN_PWR, WLAN_STAT_OFF);
+            if (ret < 0) {
+                    printk(KERN_ERR
+                            "%s: disable wlan_reset failed (%d)\n",
+                                    __func__, ret);
+                    return -EIO;
+            }
+            mdelay(1);
+
+            ret = gpio_direction_output(WLAN_REG, WLAN_STAT_OFF);
+            if (ret < 0) {
+                    printk(KERN_ERR
+                            "%s: turn off wlan_reg failed (%d)\n",
+                                    __func__, ret);
+                    return -EIO;
+            }
+            mdelay(1);
+            printk(KERN_ERR "%s: wifi power successed to pull down\n",__func__);
+	}
+
+	return ret;
+}
+
+int __init bcm_wifi_init_gpio_mem(void)
+{
+	int i = 0;
+	int rc = 0;
+
+	rc = msm_gpios_request_enable(wlan_wakes_msm_18,
+                        ARRAY_SIZE(wlan_wakes_msm_18));
+        if (rc < 0) {
+            printk(KERN_ERR
+                        "%s: wlan_wakes_msm_18 msm_gpios_request_enable failed (%d)\n",
+                        __func__, rc);
+            return -EIO;
+        }
+
+	rc = msm_gpios_request_enable(wifi_config_init,
+					ARRAY_SIZE(wifi_config_init));
+            if (rc < 0) {
+                    printk(KERN_ERR
+                            "%s: wifi_config_init msm_gpios_request_enable failed (%d)\n",
+                                    __func__, rc);
+                    return -EIO;
+            }
+
+        mdelay(5);
+        rc = gpio_direction_output(WLAN_REG, 0);
+        if (rc < 0) {
+                printk(KERN_ERR
+                        "%s: turn off wlan_reg failed (%d)\n",
+                                __func__, rc);
+                return -EIO;
+        }
+        mdelay(5);
+
+        rc = gpio_direction_output(WLAN_PWR, 0);
+        if (rc < 0) {
+                printk(KERN_ERR
+                        "%s: disable wlan_reset failed (%d)\n",
+                                __func__, rc);
+                return -EIO;
+        }
+        mdelay(5);
+
+	printk("dev_alloc_skb malloc 32k buffer to avoid page allocation fail\n");
+	for(i=0;( i < WLAN_SKB_BUF_NUM );i++) {
+		if (i < (WLAN_SKB_BUF_NUM/2))
+			wlan_static_skb[i] = dev_alloc_skb(4096);
+		else
+			wlan_static_skb[i] = dev_alloc_skb(32768);
+	}
+	for(i=0;( i < PREALLOC_WLAN_NUMBER_OF_SECTIONS );i++) {
+		wifi_mem_array[i].mem_ptr = kmalloc(wifi_mem_array[i].size,
+							GFP_KERNEL);
+		if (wifi_mem_array[i].mem_ptr == NULL)
+			return -ENOMEM;
+	}
+
+	printk("bcm_wifi_init_gpio_mem successfully \n");
+	return 0;
+}
+
+int bcm_set_carddetect(int val)
+{
+	wlan_wifi_cd = val;
+	if (wlan_status_notify_cb) {
+		printk ("%s: calling detect change\n", __func__);
+		wlan_status_notify_cb(val,
+			wlan_status_notify_cb_devid);
+	}
+	return 0;
+}
+
+static struct wifi_platform_data bcm_wifi_control = {
+	.mem_prealloc	= bcm_wifi_mem_prealloc,
+	.set_power	= bcm_wifi_set_power,
+	.set_carddetect = bcm_set_carddetect,
+};
+
+static struct platform_device bcm_wifi_device = {
+        .name           = "bcm4329_wlan",
+        .id             = 1,
+        .num_resources  = 0,
+        .resource       = NULL,
+        .dev            = {
+                .platform_data = &bcm_wifi_control,
+        },
 };
 #endif
 
@@ -3229,8 +3460,15 @@ static void __init msm7x30_init_mmc(void)
 		goto out3;
 
 	msm_sdcc_setup_gpio(3, 1);
+#ifdef CONFIG_WIFI_BCM4329
+	sdcc_wifi_slot = 3;
+#endif
 	msm_add_sdcc(3, &msm7x30_sdc3_data);
 out3:
+#endif
+#ifdef CONFIG_WIFI_BCM4329
+	bcm_wifi_init_gpio_mem();
+	platform_device_register(&bcm_wifi_device);
 #endif
 #ifdef CONFIG_MMC_MSM_SDC4_SUPPORT
 	if (mmc_regulator_init(4, "mmc", 2850000))
