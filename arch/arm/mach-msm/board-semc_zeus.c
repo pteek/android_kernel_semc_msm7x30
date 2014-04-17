@@ -3462,9 +3462,15 @@ static struct mmc_platform_data msm7x30_sdc4_data = {
 #define WLAN_SKB_BUF_NUM	16
 
 #define WLAN_GPIO_EN		57
+#define WLAN_GPIO_IRQ		147
 
 #define WLAN_STAT_ON		1
 #define WLAN_STAT_OFF		0
+
+static struct msm_gpio wlan_wakes_msm[] = {
+	{ GPIO_CFG(WLAN_GPIO_IRQ, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"WLAN_WAKES_MSM" }
+};
 
 extern int sdcc_wifi_slot;
 
@@ -3548,6 +3554,15 @@ int __init bcm_wifi_init_gpio_mem(void)
 {
 	int i = 0;
 	int rc = 0;
+
+	rc = msm_gpios_request_enable(wlan_wakes_msm,
+		ARRAY_SIZE(wlan_wakes_msm));
+	if (rc < 0) {
+		printk(KERN_ERR
+			"%s: wlan_wakes_msm msm_gpios_request_enable failed (%d)\n",
+			__func__, rc);
+		return -EIO;
+	}
 
 	rc = msm_gpios_request_enable(wifi_config_init,
 		ARRAY_SIZE(wifi_config_init));
