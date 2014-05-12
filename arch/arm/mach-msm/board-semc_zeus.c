@@ -135,6 +135,11 @@
 #include <linux/i2c/synaptics_touchpad.h>
 #endif
 
+#include <linux/if.h>
+#include <linux/inet.h>
+#include <linux/wlan_plat.h>
+#include <linux/proc_fs.h>
+
 #ifdef CONFIG_SENSORS_AKM8975
 #define AKM8975_GPIO			92
 #endif
@@ -202,6 +207,9 @@ static struct platform_device ion_dev;
 #define PMIC_GPIO_SD_DET	22
 
 #define PMIC_GPIO_SDC4_PWR_EN_N 24  /* PMIC GPIO Number 25 */
+
+#define WIFI_GPIO_EN		57
+#define WIFI_GPIO_IRQ		147
 
 #define USB_VREG_MV		3500	/* usb voltage regulator mV */
 
@@ -2430,6 +2438,97 @@ static struct msm_panel_common_pdata mdp_pdata = {
 	.mem_hid = BIT(ION_CP_WB_HEAP_ID),
 };
 
+unsigned wifi_mac_addr[IFHWADDRLEN];
+static int zeus_wifi_cd;
+static void (*wifi_status_cb)(int card_present, void *dev_id);
+static void *wifi_status_cb_devid;
+
+static int zeus_wifi_status_register(void (*callback)(int card_present, void *dev_id), void *dev_id)
+{
+	printk(KERN_DEBUG "%s: %p %p\n", __func__, callback, dev_id);
+	if (wifi_status_cb)
+		return -EAGAIN;
+	wifi_status_cb = callback;
+	wifi_status_cb_devid = dev_id;
+	return 0;
+}
+
+static unsigned int zeus_wifi_status(struct device *dev)
+{
+	printk(KERN_DEBUG "%s: %d\n", __func__, zeus_wifi_cd);
+	return zeus_wifi_cd;
+}
+
+int zeus_wifi_set_carddetect(int val)
+{
+	printk(KERN_DEBUG "%s: %d\n", __func__, val);
+	zeus_wifi_cd = val;
+	if (wifi_status_cb)
+		wifi_status_cb(val, wifi_status_cb_devid);
+	else
+		printk(KERN_WARNING "%s: Nobody to notify\n", __func__);
+	return 0;
+}
+
+int zeus_wifi_power(int on)
+{
+	printk(KERN_INFO "%s: %d\n", __func__, on);
+	gpio_set_value(WIFI_GPIO_EN, on);
+	mdelay(100);
+	return 0;
+};
+
+int zeus_wifi_reset(int on)
+{
+	printk(KERN_INFO "%s: %d\n", __func__, on);
+	mdelay(100);
+	return 0;
+};
+
+static struct resource zeus_wifi_resources[] = {
+	{
+		.name	= "bcmdhd_wlan_irq",
+		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_LOWEDGE,
+	},
+};
+
+extern struct wifi_platform_data zeus_wifi_control;
+
+static struct platform_device zeus_wifi = {
+	.name		= "bcmdhd_wlan",
+	.id		= 1,
+	.dev		= {
+		.platform_data = &zeus_wifi_control,
+	},
+};
+
+static int zeus_get_mac_address(unsigned char *buf)
+{
+	int i = IFHWADDRLEN;
+	while(i-- > 0)
+		buf[i] = wifi_mac_addr[i];
+	return 0;
+};
+
+static void zeus_init_wlan_pdata(void)
+{
+	int i = IFHWADDRLEN, cksum = 0;
+
+	while (i-- > 0)
+		cksum += (wifi_mac_addr[i] ? 1 : 0);
+
+	if (!cksum) {
+		printk(KERN_ERR "%s: BAD WiFi MAC Address- not registering WiFi device\n", __func__);
+		return;
+	};
+
+	zeus_wifi_control.get_mac_addr = zeus_get_mac_address;
+	zeus_wifi_resources[0].start = MSM_GPIO_TO_INT(WIFI_GPIO_IRQ);
+	zeus_wifi_resources[0].end = MSM_GPIO_TO_INT(WIFI_GPIO_IRQ);
+	zeus_wifi.resource = zeus_wifi_resources;
+	zeus_wifi.num_resources = ARRAY_SIZE(zeus_wifi_resources);
+}
+
 #ifdef CONFIG_SIMPLE_REMOTE_PLATFORM
 #define PLUG_DET_ENA_PIN 80
 #define PLUG_DET_READ_PIN 26
@@ -3012,14 +3111,16 @@ static unsigned int msm7x30_sdcc_slot_status(struct device *dev)
 
 #ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
 static struct mmc_platform_data msm7x30_sdc3_data = {
-	.ocr_mask	= MMC_VDD_27_28 | MMC_VDD_28_29,
+	.ocr_mask	= MMC_VDD_165_195, /* 1.8v */
 	.translate_vdd	= msm_sdcc_setup_power,
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
 	.sdiowakeup_irq = MSM_GPIO_TO_INT(118),
 	.msmsdcc_fmin	= 144000,
 	.msmsdcc_fmid	= 24576000,
 	.msmsdcc_fmax	= 49152000,
-	.nonremovable	= 0,
+	.nonremovable	= 1,
+	.status			= zeus_wifi_status,
+	.register_status_notify = zeus_wifi_status_register,
 };
 #endif
 
@@ -3112,6 +3213,24 @@ static void __init zeus_temp_fixups(void)
 
 	vreg_helper("wlan", 1800000, 1); /* ldo13 - touchpad VDIO */
 	vreg_helper("gp10", 2800000, 1); /* ldo16 - touchpad */
+}
+
+static void zeus_init_wlan_gpios(void)
+{
+	int pin, rc;
+	unsigned wlan_gpio_on[] = {
+		GPIO_CFG(WIFI_GPIO_IRQ, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_4MA),  /* WLAN IRQ */
+		GPIO_CFG(WIFI_GPIO_EN, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),  /* WLAN EN  */
+	};
+
+	for (pin = 0; pin < ARRAY_SIZE(wlan_gpio_on); pin++) {
+		rc = gpio_tlmm_config(wlan_gpio_on[pin], GPIO_CFG_ENABLE);
+		if (rc) {
+			printk(KERN_INFO "%s: gpio_tlmm_config(%#x)=%d\n",
+				__func__, wlan_gpio_on[pin], rc);
+			return;
+		}
+	}
 }
 
 static void __init msm7x30_init_nand(void)
@@ -3262,6 +3381,9 @@ static void __init msm7x30_init(void)
 #ifdef CONFIG_TOUCHSCREEN_CY8CTMA300
 	cypress_touch_gpio_init();
 #endif /* CONFIG_TOUCHSCREEN_CY8CTMA300 */
+
+	zeus_init_wlan_gpios();
+	zeus_init_wlan_pdata();
 
 	i2c_register_board_info(0, msm_i2c_board_info,
 			ARRAY_SIZE(msm_i2c_board_info));

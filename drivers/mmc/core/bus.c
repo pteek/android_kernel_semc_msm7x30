@@ -356,6 +356,9 @@ void mmc_remove_card(struct mmc_card *card)
 			pr_info("%s: card %04x removed\n",
 				mmc_hostname(card->host), card->rca);
 		}
+#ifdef CONFIG_BOARD_SEMC_ZEUS
+		mmc_card_set_removed(card);
+#endif /* CONFIG_BOARD_SEMC_ZEUS */
 		device_del(&card->dev);
 	}
 
