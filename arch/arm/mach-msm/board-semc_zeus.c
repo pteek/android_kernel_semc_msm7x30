@@ -2577,96 +2577,95 @@ static struct platform_device simple_remote_pf_device = {
 #endif
 
 static struct resource bluesleep_resources[] = {
-{
-    .name = "gpio_host_wake",
-    .start = GPIO_BT_HOST_WAKE,
-    .end = GPIO_BT_HOST_WAKE,
-    .flags = IORESOURCE_IO,
-    },
-    {
-    .name = "gpio_ext_wake",
-    .start = GPIO_BT_WAKE,//81,//35,
-    .end = GPIO_BT_WAKE,//81, //35,
-    .flags = IORESOURCE_IO,
-    },
-    {
-    .name = "host_wake",
-    .start = MSM_GPIO_TO_INT(GPIO_BT_HOST_WAKE),
-    .end = MSM_GPIO_TO_INT(GPIO_BT_HOST_WAKE),
-    .flags = IORESOURCE_IRQ,
-    },
+	{
+		.name	= "gpio_host_wake",
+		.start	= GPIO_BT_HOST_WAKE,
+		.end	= GPIO_BT_HOST_WAKE,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "gpio_ext_wake",
+		.start	= GPIO_BT_WAKE,
+		.end	= GPIO_BT_WAKE,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "host_wake",
+		.start	= MSM_GPIO_TO_INT(GPIO_BT_HOST_WAKE),
+		.end	= MSM_GPIO_TO_INT(GPIO_BT_HOST_WAKE),
+		.flags	= IORESOURCE_IRQ,
+	},
 };
 
 static struct platform_device msm_bluesleep_device = {
-    .name = "bluesleep",
-    .id = -1,
-    .num_resources = ARRAY_SIZE(bluesleep_resources),
-    .resource = bluesleep_resources,
+	.name = "bluesleep",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(bluesleep_resources),
+	.resource = bluesleep_resources,
 };
 
 static struct platform_device msm_bt_power_device = {
-.name = "bt_power",
+	.name = "bt_power",
 };
 
 static unsigned bt_config_power_on[] = {
-    GPIO_CFG(GPIO_BT_WAKE,     0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* WAKE */
-    GPIO_CFG(GPIO_BT_UART_RTS, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* RFR */
-    GPIO_CFG(GPIO_BT_UART_CTS, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* CTS */
-    GPIO_CFG(GPIO_BT_UART_RXD, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* Rx */
-    GPIO_CFG(GPIO_BT_UART_TXD, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* Tx */
-    GPIO_CFG(GPIO_BT_PCM_DOUT, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_DOUT */
-    GPIO_CFG(GPIO_BT_PCM_DIN,  1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_DIN */
-    GPIO_CFG(GPIO_BT_PCM_SYNC, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_SYNC */
-    GPIO_CFG(GPIO_BT_PCM_CLK,  1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_CLK */
-    GPIO_CFG(GPIO_BT_HOST_WAKE,0, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* HOST_WAKE */
+	GPIO_CFG(GPIO_BT_WAKE,     0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* WAKE */
+	GPIO_CFG(GPIO_BT_UART_RTS, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* RFR */
+	GPIO_CFG(GPIO_BT_UART_CTS, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* CTS */
+	GPIO_CFG(GPIO_BT_UART_RXD, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* Rx */
+	GPIO_CFG(GPIO_BT_UART_TXD, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* Tx */
+	GPIO_CFG(GPIO_BT_PCM_DOUT, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_DOUT */
+	GPIO_CFG(GPIO_BT_PCM_DIN,  1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_DIN */
+	GPIO_CFG(GPIO_BT_PCM_SYNC, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_SYNC */
+	GPIO_CFG(GPIO_BT_PCM_CLK,  1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_CLK */
+	GPIO_CFG(GPIO_BT_HOST_WAKE,0, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* HOST_WAKE */
 };
 
 static unsigned bt_config_power_off[] = {
-    GPIO_CFG(GPIO_BT_WAKE,     0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* WAKE */
-    GPIO_CFG(GPIO_BT_UART_RTS, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* RFR */
-    GPIO_CFG(GPIO_BT_UART_CTS, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* CTS */
-    GPIO_CFG(GPIO_BT_UART_RXD, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* Rx */
-    GPIO_CFG(GPIO_BT_UART_TXD, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* Tx */
-    GPIO_CFG(GPIO_BT_PCM_DOUT, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_DOUT */
-    GPIO_CFG(GPIO_BT_PCM_DIN,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_DIN */
-    GPIO_CFG(GPIO_BT_PCM_SYNC, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_SYNC */
-    GPIO_CFG(GPIO_BT_PCM_CLK,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_CLK */
-    GPIO_CFG(GPIO_BT_HOST_WAKE,0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* HOST_WAKE */
+	GPIO_CFG(GPIO_BT_WAKE,     0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* WAKE */
+	GPIO_CFG(GPIO_BT_UART_RTS, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* RFR */
+	GPIO_CFG(GPIO_BT_UART_CTS, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* CTS */
+	GPIO_CFG(GPIO_BT_UART_RXD, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* Rx */
+	GPIO_CFG(GPIO_BT_UART_TXD, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* Tx */
+	GPIO_CFG(GPIO_BT_PCM_DOUT, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_DOUT */
+	GPIO_CFG(GPIO_BT_PCM_DIN,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_DIN */
+	GPIO_CFG(GPIO_BT_PCM_SYNC, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_SYNC */
+	GPIO_CFG(GPIO_BT_PCM_CLK,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_CLK */
+	GPIO_CFG(GPIO_BT_HOST_WAKE,0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* HOST_WAKE */
 };
 
 static int bluetooth_power(int on)
 {
-    pr_info("bluetooth_power \n");
+	pr_info("%s\n", __func__);
 
-    printk(KERN_DEBUG "%s\n", __func__);
+	if (on) {
+		config_gpio_table(bt_config_power_on, ARRAY_SIZE(bt_config_power_on));
 
-    if (on) {
-        config_gpio_table(bt_config_power_on, ARRAY_SIZE(bt_config_power_on));
-        pr_info("bluetooth_power BT_WAKE:%d, HOST_WAKE:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE));
+		pr_info("bluetooth_power ON BEFORE: BT_WAKE:%d, HOST_WAKE:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE));
+		gpio_direction_output(GPIO_BT_WAKE, 1);
+		mdelay(150);
+		gpio_direction_output(GPIO_BT_RESET, 1);
+		pr_info("bluetooth_power ON AFTER: BT_WAKE:%d, HOST_WAKE:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE));
+	} else {
+		pr_info("bluetooth_power OFF BEFORE: BT_WAKE:%d, HOST_WAKE:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE));
+		gpio_direction_output(GPIO_BT_RESET, 0);
+		mdelay(150);
+		gpio_direction_output(GPIO_BT_WAKE, 0);
+		pr_info("bluetooth_power OFF AFTER: BT_WAKE:%d, HOST_WAKE:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE));
 
-        gpio_direction_output(GPIO_BT_WAKE, 1);
-        mdelay(150);
-        gpio_direction_output(GPIO_BT_RESET, 1);
+		config_gpio_table(bt_config_power_off, ARRAY_SIZE(bt_config_power_off));
+	}
 
-        pr_info("bluetooth_power BT_WAKE:%d, HOST_WAKE:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE));   
-        mdelay(150);
-    } else {
-        gpio_direction_output(GPIO_BT_RESET, 0);
-	mdelay(150);
-        gpio_direction_output(GPIO_BT_WAKE, 0);
-
-        config_gpio_table(bt_config_power_off, ARRAY_SIZE(bt_config_power_off));
-    }
-    return 0;
+	return 0;
 }
 
 extern void bluesleep_setup_uart_port(struct platform_device *uart_dev);
 static void __init bt_power_init(void)
 {
-    pr_info("bt_power_init \n");
+	pr_info("%s\n", __func__);
 
-    msm_bt_power_device.dev.platform_data = &bluetooth_power;
-    bluesleep_setup_uart_port(&msm_device_uart_dm1);
+	msm_bt_power_device.dev.platform_data = &bluetooth_power;
+	bluesleep_setup_uart_port(&msm_device_uart_dm1);
 }
 
 static void __init msm_fb_add_devices(void)
