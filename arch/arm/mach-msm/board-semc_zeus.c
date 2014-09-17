@@ -165,28 +165,18 @@
 #define SYNAPTICS_TOUCHPAD_GPIO		33
 #endif
 
-#define GPIO_BT_WAKE		147
-#define GPIO_BT_HOST_WAKE	145
-#define GPIO_BT_WLAN_REG_ON	144
-#define GPIO_BT_RESET		146
+#define GPIO_BT_WAKE		106 /* MSM_WAKES_BT */
+#define GPIO_BT_HOST_WAKE	18  /* BT_WAKES_MSM */
+#define GPIO_BT_RESET		103 /* BT_RST_N */
 
-#define GPIO_BT_UART_RTS	134
-#define GPIO_BT_UART_CTS	135
-#define GPIO_BT_UART_RXD	136
-#define GPIO_BT_UART_TXD	137
-#define GPIO_BT_PCM_DOUT	138
-#define GPIO_BT_PCM_DIN		139
-#define GPIO_BT_PCM_SYNC	140
-#define GPIO_BT_PCM_CLK		141
-
-#define GPIO_WLAN_LEVEL_LOW	0
-#define GPIO_WLAN_LEVEL_HIGH	1
-#define GPIO_WLAN_LEVEL_NONE	2
-
-#define GPIO_BT_RESET		146
-#define WLAN_EN_GPIO		144 //WLAN_BT_EN
-#define WLAN_RESET		127 //Reset
-#define WLAN_HOST_WAKE		111
+#define GPIO_BT_UART_RTS	134 /* BT_UART_RTS */
+#define GPIO_BT_UART_CTS	135 /* BT_UART_CTS */
+#define GPIO_BT_UART_RXD	136 /* BT_UART_RXD */
+#define GPIO_BT_UART_TXD	137 /* BT_UART_TXD */
+#define GPIO_BT_PCM_DOUT	138 /* BT_PCM_DOUT */
+#define GPIO_BT_PCM_DIN		139 /* BT_PCM_DIN */
+#define GPIO_BT_PCM_SYNC	140 /* BT_PCM_SYNC */
+#define GPIO_BT_PCM_CLK		141 /* BT_PCM_CLK */
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MSM_FB_PRIM_BUF_SIZE   (864 * 480 * 4 * 3) /* 4bpp * 3 Pages */
@@ -2646,34 +2636,24 @@ static unsigned bt_config_power_off[] = {
 
 static int bluetooth_power(int on)
 {
-//    struct vreg *vreg_bt;
-//    int pin, rc;
-
     pr_info("bluetooth_power \n");
 
     printk(KERN_DEBUG "%s\n", __func__);
 
     if (on) {
         config_gpio_table(bt_config_power_on, ARRAY_SIZE(bt_config_power_on));
-        pr_info("bluetooth_power BT_WAKE:%d, HOST_WAKE:%d, REG_ON:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE), gpio_get_value(GPIO_BT_WLAN_REG_ON));
+        pr_info("bluetooth_power BT_WAKE:%d, HOST_WAKE:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE));
 
-        gpio_direction_output(GPIO_BT_WAKE, GPIO_WLAN_LEVEL_HIGH);
-        gpio_direction_output(GPIO_BT_WLAN_REG_ON, GPIO_WLAN_LEVEL_HIGH);
+        gpio_direction_output(GPIO_BT_WAKE, 1);
         mdelay(150);
-        gpio_direction_output(GPIO_BT_RESET, GPIO_WLAN_LEVEL_HIGH);
+        gpio_direction_output(GPIO_BT_RESET, 1);
 
-        pr_info("bluetooth_power BT_WAKE:%d, HOST_WAKE:%d, REG_ON:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE), gpio_get_value(GPIO_BT_WLAN_REG_ON));   
+        pr_info("bluetooth_power BT_WAKE:%d, HOST_WAKE:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE));   
         mdelay(150);
-    }
-    else {
-        gpio_direction_output(GPIO_BT_RESET, GPIO_WLAN_LEVEL_LOW);/* BT_VREG_CTL */
-
-        if( gpio_get_value(WLAN_RESET) == GPIO_WLAN_LEVEL_LOW ) //SEC_BLUETOOTH : pjh_2010.06.30
-        {
-            gpio_direction_output(GPIO_BT_WLAN_REG_ON, GPIO_WLAN_LEVEL_LOW);/* BT_RESET */
-            mdelay(150);
-        }
-        gpio_direction_output(GPIO_BT_WAKE, GPIO_WLAN_LEVEL_LOW);/* BT_VREG_CTL */
+    } else {
+        gpio_direction_output(GPIO_BT_RESET, 0);
+	mdelay(150);
+        gpio_direction_output(GPIO_BT_WAKE, 0);
 
         config_gpio_table(bt_config_power_off, ARRAY_SIZE(bt_config_power_off));
     }
@@ -2688,14 +2668,6 @@ static void __init bt_power_init(void)
     msm_bt_power_device.dev.platform_data = &bluetooth_power;
     bluesleep_setup_uart_port(&msm_device_uart_dm1);
 }
-
-/*static int bluetooth_gpio_init(void)
-{
-    pr_info("bluetooth_gpio_init on system_rev:%d\n", system_rev);
-
-    config_gpio_table(bt_config_power_on, ARRAY_SIZE(bt_config_power_on));
-    return 0;
-}*/
 
 static void __init msm_fb_add_devices(void)
 {
