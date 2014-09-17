@@ -140,6 +140,8 @@
 #include <linux/i2c/synaptics_touchpad.h>
 #endif
 
+#include <../../../drivers/bluetooth/bluesleep.c>
+
 #ifdef CONFIG_SENSORS_AKM8975
 #define AKM8975_GPIO			92
 #endif
@@ -162,6 +164,29 @@
 #ifdef CONFIG_JOYSTICK_SYNAPTICS
 #define SYNAPTICS_TOUCHPAD_GPIO		33
 #endif
+
+#define GPIO_BT_WAKE		147
+#define GPIO_BT_HOST_WAKE	145
+#define GPIO_BT_WLAN_REG_ON	144
+#define GPIO_BT_RESET		146
+
+#define GPIO_BT_UART_RTS	134
+#define GPIO_BT_UART_CTS	135
+#define GPIO_BT_UART_RXD	136
+#define GPIO_BT_UART_TXD	137
+#define GPIO_BT_PCM_DOUT	138
+#define GPIO_BT_PCM_DIN		139
+#define GPIO_BT_PCM_SYNC	140
+#define GPIO_BT_PCM_CLK		141
+
+#define GPIO_WLAN_LEVEL_LOW	0
+#define GPIO_WLAN_LEVEL_HIGH	1
+#define GPIO_WLAN_LEVEL_NONE	2
+
+#define GPIO_BT_RESET		146
+#define WLAN_EN_GPIO		144 //WLAN_BT_EN
+#define WLAN_RESET		127 //Reset
+#define WLAN_HOST_WAKE		111
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MSM_FB_PRIM_BUF_SIZE   (864 * 480 * 4 * 3) /* 4bpp * 3 Pages */
@@ -2561,6 +2586,117 @@ static struct platform_device simple_remote_pf_device = {
 };
 #endif
 
+static struct resource bluesleep_resources[] = {
+{
+    .name = "gpio_host_wake",
+    .start = GPIO_BT_HOST_WAKE,
+    .end = GPIO_BT_HOST_WAKE,
+    .flags = IORESOURCE_IO,
+    },
+    {
+    .name = "gpio_ext_wake",
+    .start = GPIO_BT_WAKE,//81,//35,
+    .end = GPIO_BT_WAKE,//81, //35,
+    .flags = IORESOURCE_IO,
+    },
+    {
+    .name = "host_wake",
+    .start = MSM_GPIO_TO_INT(GPIO_BT_HOST_WAKE),
+    .end = MSM_GPIO_TO_INT(GPIO_BT_HOST_WAKE),
+    .flags = IORESOURCE_IRQ,
+    },
+};
+
+static struct platform_device msm_bluesleep_device = {
+    .name = "bluesleep",
+    .id = -1,
+    .num_resources = ARRAY_SIZE(bluesleep_resources),
+    .resource = bluesleep_resources,
+};
+
+static struct platform_device msm_bt_power_device = {
+.name = "bt_power",
+};
+
+static unsigned bt_config_power_on[] = {
+    GPIO_CFG(GPIO_BT_WAKE,     0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* WAKE */
+    GPIO_CFG(GPIO_BT_UART_RTS, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* RFR */
+    GPIO_CFG(GPIO_BT_UART_CTS, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* CTS */
+    GPIO_CFG(GPIO_BT_UART_RXD, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* Rx */
+    GPIO_CFG(GPIO_BT_UART_TXD, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* Tx */
+    GPIO_CFG(GPIO_BT_PCM_DOUT, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_DOUT */
+    GPIO_CFG(GPIO_BT_PCM_DIN,  1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_DIN */
+    GPIO_CFG(GPIO_BT_PCM_SYNC, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_SYNC */
+    GPIO_CFG(GPIO_BT_PCM_CLK,  1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* PCM_CLK */
+    GPIO_CFG(GPIO_BT_HOST_WAKE,0, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),    /* HOST_WAKE */
+};
+
+static unsigned bt_config_power_off[] = {
+    GPIO_CFG(GPIO_BT_WAKE,     0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* WAKE */
+    GPIO_CFG(GPIO_BT_UART_RTS, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* RFR */
+    GPIO_CFG(GPIO_BT_UART_CTS, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* CTS */
+    GPIO_CFG(GPIO_BT_UART_RXD, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* Rx */
+    GPIO_CFG(GPIO_BT_UART_TXD, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* Tx */
+    GPIO_CFG(GPIO_BT_PCM_DOUT, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_DOUT */
+    GPIO_CFG(GPIO_BT_PCM_DIN,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_DIN */
+    GPIO_CFG(GPIO_BT_PCM_SYNC, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_SYNC */
+    GPIO_CFG(GPIO_BT_PCM_CLK,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* PCM_CLK */
+    GPIO_CFG(GPIO_BT_HOST_WAKE,0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),    /* HOST_WAKE */
+};
+
+static int bluetooth_power(int on)
+{
+//    struct vreg *vreg_bt;
+//    int pin, rc;
+
+    pr_info("bluetooth_power \n");
+
+    printk(KERN_DEBUG "%s\n", __func__);
+
+    if (on) {
+        config_gpio_table(bt_config_power_on, ARRAY_SIZE(bt_config_power_on));
+        pr_info("bluetooth_power BT_WAKE:%d, HOST_WAKE:%d, REG_ON:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE), gpio_get_value(GPIO_BT_WLAN_REG_ON));
+
+        gpio_direction_output(GPIO_BT_WAKE, GPIO_WLAN_LEVEL_HIGH);
+        gpio_direction_output(GPIO_BT_WLAN_REG_ON, GPIO_WLAN_LEVEL_HIGH);
+        mdelay(150);
+        gpio_direction_output(GPIO_BT_RESET, GPIO_WLAN_LEVEL_HIGH);
+
+        pr_info("bluetooth_power BT_WAKE:%d, HOST_WAKE:%d, REG_ON:%d\n", gpio_get_value(GPIO_BT_WAKE), gpio_get_value(GPIO_BT_HOST_WAKE), gpio_get_value(GPIO_BT_WLAN_REG_ON));   
+        mdelay(150);
+    }
+    else {
+        gpio_direction_output(GPIO_BT_RESET, GPIO_WLAN_LEVEL_LOW);/* BT_VREG_CTL */
+
+        if( gpio_get_value(WLAN_RESET) == GPIO_WLAN_LEVEL_LOW ) //SEC_BLUETOOTH : pjh_2010.06.30
+        {
+            gpio_direction_output(GPIO_BT_WLAN_REG_ON, GPIO_WLAN_LEVEL_LOW);/* BT_RESET */
+            mdelay(150);
+        }
+        gpio_direction_output(GPIO_BT_WAKE, GPIO_WLAN_LEVEL_LOW);/* BT_VREG_CTL */
+
+        config_gpio_table(bt_config_power_off, ARRAY_SIZE(bt_config_power_off));
+    }
+    return 0;
+}
+
+extern void bluesleep_setup_uart_port(struct platform_device *uart_dev);
+static void __init bt_power_init(void)
+{
+    pr_info("bt_power_init \n");
+
+    msm_bt_power_device.dev.platform_data = &bluetooth_power;
+    bluesleep_setup_uart_port(&msm_device_uart_dm1);
+}
+
+/*static int bluetooth_gpio_init(void)
+{
+    pr_info("bluetooth_gpio_init on system_rev:%d\n", system_rev);
+
+    config_gpio_table(bt_config_power_on, ARRAY_SIZE(bt_config_power_on));
+    return 0;
+}*/
+
 static void __init msm_fb_add_devices(void)
 {
 	msm_fb_register_device("mdp", &mdp_pdata);
@@ -2645,6 +2781,8 @@ static struct platform_device *devices[] __initdata = {
 #endif
 	&msm_device_adspdec,
 	&qup_device_i2c,
+	&msm_bt_power_device,
+	&msm_bluesleep_device,
 	&msm_kgsl_3d0,
 	&msm_kgsl_2d0,
 #ifdef CONFIG_SEIX006
@@ -3267,6 +3405,8 @@ static void __init msm7x30_init(void)
 
 	spi_register_board_info(msm_spi_board_info,
 				ARRAY_SIZE(msm_spi_board_info));
+
+	bt_power_init();
 
 #ifdef CONFIG_I2C_SSBI
 	msm_device_ssbi7.dev.platform_data = &msm_i2c_ssbi7_pdata;
