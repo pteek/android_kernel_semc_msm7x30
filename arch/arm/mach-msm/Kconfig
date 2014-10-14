@@ -1756,7 +1756,7 @@ endchoice
 
 config MSM7KV2_AUDIO
 	bool "MSM7K v2 audio"
-	depends on (ARCH_MSM7X30 && ANDROID_PMEM)
+	depends on ARCH_MSM7X30
 	default y
 	help
 	  Enables QDSP5V2-based audio drivers for audio playbacks and
@@ -2816,12 +2816,6 @@ config CRADLE_SUPPORT
 	help
 	  Provides support for docking cradle. Depends on simple remote
 	  HW specific driver.
-
-config SEMC_CAMERA_8MP
-	bool "Increased PMEP_ADSP for 8MP sensors"
-	default n
-	help
-	  Increased PMEP_ADSP for phones with 8MP sensors.
 
 config FORCE_FAST_CHARGE
 	bool "Force AC charge mode at will"
