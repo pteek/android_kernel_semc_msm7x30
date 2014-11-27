@@ -140,6 +140,8 @@
 #include <linux/i2c/synaptics_touchpad.h>
 #endif
 
+#include "wifi-zeus.h"
+
 #ifdef CONFIG_SENSORS_AKM8975
 #define AKM8975_GPIO			92
 #endif
@@ -2567,6 +2569,181 @@ static void __init msm_fb_add_devices(void)
 	msm_fb_register_device("pmdh", &mddi_pdata);
 }
 
+#ifdef CONFIG_MSM_BT_POWER
+#define GPIO_BT_WAKE_MSM	18
+#define GPIO_MSM_WAKE_BT	106
+#define GPIO_BT_RESET_N		103
+
+static struct platform_device msm_bt_power_device;
+
+enum {
+	BT_RFR,
+	BT_CTS,
+	BT_RX,
+	BT_TX,
+};
+
+static struct msm_gpio bt_config_power_on[] = {
+	{ GPIO_CFG(134, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"UART1DM_RFR" },
+	{ GPIO_CFG(135, 1, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"UART1DM_CTS" },
+	{ GPIO_CFG(136, 1, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"UART1DM_Rx" },
+	{ GPIO_CFG(137, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"UART1DM_Tx" },
+	{ GPIO_CFG(GPIO_BT_WAKE_MSM, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"BT_WAKE_MSM" },
+	{ GPIO_CFG(GPIO_MSM_WAKE_BT, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"MSM_WAKE_BT" }
+};
+
+static struct msm_gpio bt_config_power_off[] = {
+	{ GPIO_CFG(134, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"UART1DM_RFR" },
+	{ GPIO_CFG(135, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"UART1DM_CTS" },
+	{ GPIO_CFG(136, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"UART1DM_Rx" },
+	{ GPIO_CFG(137, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"UART1DM_Tx" },
+	{ GPIO_CFG(GPIO_BT_WAKE_MSM, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"BT_WAKE_MSM" },
+	{ GPIO_CFG(GPIO_MSM_WAKE_BT, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"MSM_WAKE_BT" }
+};
+
+static struct msm_gpio bt_config_power_control[] = {
+	{ GPIO_CFG(GPIO_BT_RESET_N, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"BT_PWR_ON" }
+};
+
+static struct regulator_bulk_data regs_bt[] = {
+	{ .supply = "smps3", .min_uV = 1800000, .max_uV = 1800000 },
+};
+
+static int __init bluetooth_power_init(void)
+{
+	int rc = 0;
+	struct device *const dev = &msm_bt_power_device.dev;
+
+	rc = regulator_bulk_get(&msm_bt_power_device.dev,
+		ARRAY_SIZE(regs_bt), regs_bt);
+	if (rc) {
+		dev_err(dev, "%s: could not get regulators: %d\n",
+				__func__, rc);
+		goto out;
+	}
+
+	rc = regulator_bulk_set_voltage(ARRAY_SIZE(regs_bt),
+		regs_bt);
+	if (rc) {
+		dev_err(dev, "%s: could not set voltages: %d\n",
+				__func__, rc);
+		goto reg_free;
+	}
+
+	rc = msm_gpios_request_enable(bt_config_power_control,
+		ARRAY_SIZE(bt_config_power_control));
+	if (rc) {
+		dev_err(dev, "%s: could not request enable gpios: %d\n",
+				__func__, rc);
+		goto reg_free;
+	}
+
+	rc = gpio_direction_output(GPIO_BT_RESET_N, 0);
+	msleep(1);
+
+	return 0;
+
+reg_free:
+	regulator_bulk_free(ARRAY_SIZE(regs_bt), regs_bt);
+out:
+	return rc;
+}
+
+static int bluetooth_power(int on)
+{
+	int rc;
+
+	if (on) {
+		rc = regulator_bulk_enable(ARRAY_SIZE(regs_bt),
+			regs_bt);
+		if (rc)
+			return rc;
+
+		rc = msm_gpios_enable(bt_config_power_on,
+			ARRAY_SIZE(bt_config_power_on));
+		if (rc < 0)
+			return rc;
+
+		rc = gpio_direction_output(GPIO_BT_RESET_N, 1);
+		msleep(150);
+	} else {
+		rc = gpio_direction_output(GPIO_BT_RESET_N, 0);
+		msleep(1);
+
+		rc = msm_gpios_enable(bt_config_power_off,
+					ARRAY_SIZE(bt_config_power_off));
+		if (rc < 0)
+			return rc;
+
+		/* check for initial RFKILL block (power off) */
+		if (platform_get_drvdata(&msm_bt_power_device) == NULL)
+			goto out;
+
+		rc = regulator_bulk_disable(ARRAY_SIZE(regs_bt),
+			regs_bt);
+		if (rc)
+			return rc;
+
+	}
+
+out:
+	printk(KERN_DEBUG "Bluetooth power switch: %d\n", on);
+
+	return 0;
+}
+
+static struct platform_device msm_bt_power_device = {
+	.name	= "bt_power",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &bluetooth_power,
+	}
+};
+#endif
+
+#ifdef CONFIG_BT_MSM_SLEEP
+static struct resource msm_bluesleep_resources[] = {
+	{
+		.name	= "gpio_host_wake",
+		.start	= GPIO_BT_WAKE_MSM,
+		.end	= GPIO_BT_WAKE_MSM,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "gpio_ext_wake",
+		.start	= GPIO_MSM_WAKE_BT,
+		.end	= GPIO_MSM_WAKE_BT,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "host_wake",
+		.start	= MSM_GPIO_TO_INT(GPIO_BT_WAKE_MSM),
+		.end	= MSM_GPIO_TO_INT(GPIO_BT_WAKE_MSM),
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device msm_bluesleep_device = {
+	.name = "bluesleep",
+	.id = -1,
+	.resource = msm_bluesleep_resources,
+	.num_resources = ARRAY_SIZE(msm_bluesleep_resources),
+};
+#endif
+
 static char *msm_adc_device_names[] = {
 	"XO_ADC",
 };
@@ -2645,6 +2822,12 @@ static struct platform_device *devices[] __initdata = {
 #endif
 	&msm_device_adspdec,
 	&qup_device_i2c,
+#ifdef CONFIG_MSM_BT_POWER
+	&msm_bt_power_device,
+#endif
+#ifdef CONFIG_BT_MSM_SLEEP
+	&msm_bluesleep_device,
+#endif
 	&msm_kgsl_3d0,
 	&msm_kgsl_2d0,
 #ifdef CONFIG_SEIX006
@@ -2994,6 +3177,28 @@ out:
 
 #endif
 
+#ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
+void (*wifi_status_cb)(int card_present, void *dev_id) = NULL;
+void *wifi_status_cb_devid = 0;
+int zeus_wifi_cd = 0; /* WIFI virtual 'card detect' status */
+
+static int msm7x30_sdc3_register_status_notify(
+	void (*callback)(int card_present, void *dev_id), void *dev_id)
+{
+	if (wifi_status_cb)
+		return -EAGAIN;
+
+	wifi_status_cb = callback;
+	wifi_status_cb_devid = dev_id;
+	return 0;
+}
+
+static unsigned int msm7x30_sdc3_status(struct device *dev)
+{
+	return zeus_wifi_cd;
+}
+#endif
+
 #ifdef CONFIG_MMC_MSM_SDC4_SUPPORT
 static unsigned int msm7x30_sdcc_slot_status(struct device *dev)
 {
@@ -3008,11 +3213,12 @@ static struct mmc_platform_data msm7x30_sdc3_data = {
 	.ocr_mask	= MMC_VDD_27_28 | MMC_VDD_28_29,
 	.translate_vdd	= msm_sdcc_setup_power,
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
-	.sdiowakeup_irq = MSM_GPIO_TO_INT(118),
 	.msmsdcc_fmin	= 144000,
 	.msmsdcc_fmid	= 24576000,
 	.msmsdcc_fmax	= 49152000,
 	.nonremovable	= 0,
+	.status			= msm7x30_sdc3_status,
+	.register_status_notify	= msm7x30_sdc3_register_status_notify,
 };
 #endif
 
@@ -3237,6 +3443,9 @@ static void __init msm7x30_init(void)
 
 #ifdef CONFIG_INPUT_KEYRESET
 	platform_device_register(&semc_reset_keys_device);
+#endif
+#ifdef CONFIG_MSM_BT_POWER
+	bluetooth_power_init();
 #endif
 	msm_fb_add_devices();
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
